@@ -1,0 +1,9 @@
+manifest:
+  projects:
+    - name: zephyr
+      url: https://github.com/zephyrproject-rtos/zephyr
+      # Zephyr 4.4.99, matching the local workspace used for this application.
+      revision: 434233e9751e7cca7bea82047e812bca607722d3
+      import: true
+  self:
+    path: app

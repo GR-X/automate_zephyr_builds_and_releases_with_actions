@@ -1,18 +1,71 @@
-name: GitHub Actions Demo
-run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
-on: [push]
+name: Zephyr Hello World
+
+"on":
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
 jobs:
-  Explore-GitHub-Actions:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
-      - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
-      - run: echo "🐧 This job is now running on a ${{ runner.os }} server hosted by GitHub!"
-      - run: echo "🔎 The name of your branch is ${{ github.ref }} and your repository is ${{ github.repository }}."
-      - name: Check out repository code
+      - name: Check out application
         uses: actions/checkout@v6
-      - run: echo "💡 The ${{ github.repository }} repository has been cloned to the runner."
-      - run: echo "🖥️ The workflow is now ready to test your code on the runner."
-      - name: List files in the repository
+        with:
+          path: app
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      # https://github.com/zephyrproject-rtos/action-zephyr-setup
+      - name: Set up Zephyr
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          sdk-version: "1.0.1"
+          toolchains: x86_64-zephyr-elf
+
+      - name: Build Hello World
+        run: west build -b qemu_x86 app/hello_world -d build
+
+      - name: Check firmware outputs
         run: |
-          ls ${{ github.workspace }}
-      - run: echo "🍏 This job's status is ${{ job.status }}."
+          test -s build/zephyr/zephyr.bin
+          test -s build/zephyr/zephyr.hex
+          test -s build/zephyr/zephyr.elf
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v7
+        with:
+          name: hello-world-qemu-x86
+          path: |
+            build/zephyr/zephyr.bin
+            build/zephyr/zephyr.hex
+            build/zephyr/zephyr.elf
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          release_flags=(--latest)
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            release_flags=(--prerelease --latest=false)
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            build/zephyr/zephyr.hex \
+            build/zephyr/zephyr.bin \
+            build/zephyr/zephyr.elf \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            "${release_flags[@]}"
